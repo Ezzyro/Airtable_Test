@@ -4,6 +4,8 @@ const axios = require('axios');
 const Airtable = require('airtable');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
+const cors = require('cors');
+
 
 // Configuration
 const config = {
@@ -305,9 +307,16 @@ async function processIntake(intakeId) {
 // API Server Setup
 const app = express();
 app.use(express.json());
+app.use(cors());
+
+app.use(cors({
+    origin: '*',  // Be more specific in production
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // API Endpoints
-app.post('/api/teams-response/:action', async (req, res) => {
+app.post('https://airtable-test.onrender.com/api/teams-response/:action', async (req, res) => {
     try {
         const { action } = req.params;
         const { intakeId, summary, modifiedText } = req.body;
@@ -377,6 +386,22 @@ app.post('/api/teams-response/:action', async (req, res) => {
             intakeId: req.body.intakeId 
         });
     }
+});
+
+app.use((err, req, res, next) => {
+    console.error('Error:', {
+        message: err.message,
+        stack: err.stack,
+        url: req.url,
+        method: req.method,
+        body: req.body
+    });
+    
+    res.status(500).json({
+        error: err.message,
+        requestUrl: req.url,
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Start server
