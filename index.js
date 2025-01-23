@@ -80,19 +80,25 @@ async function sendTeamsMessage(summary, intakeId) {
                         type: "Action.Submit",
                         title: "Approve",
                         data: {
+                            msteams: {
+                                type: "messageBack",
+                                text: "approved"
+                            },
                             actionId: "approve",
                             intakeId: intakeId,
-                            summary: summary,
-                            webhookUrl: `${process.env.SERVER_URL}/api/teams-response/approve`
+                            summary: summary
                         }
                     },
                     {
                         type: "Action.Submit",
                         title: "Reject",
                         data: {
+                            msteams: {
+                                type: "messageBack",
+                                text: "rejected"
+                            },
                             actionId: "reject",
-                            intakeId: intakeId,
-                            webhookUrl: `${process.env.SERVER_URL}/api/teams-response/reject`
+                            intakeId: intakeId
                         }
                     },
                     {
@@ -114,9 +120,12 @@ async function sendTeamsMessage(summary, intakeId) {
                                     type: "Action.Submit",
                                     title: "Submit Modified",
                                     data: {
+                                        msteams: {
+                                            type: "messageBack",
+                                            text: "modified"
+                                        },
                                         actionId: "modify",
-                                        intakeId: intakeId,
-                                        webhookUrl: `${process.env.SERVER_URL}/api/teams-response/modify`
+                                        intakeId: intakeId
                                     }
                                 }
                             ]
@@ -316,10 +325,21 @@ app.use(cors({
 }));
 
 // API Endpoints
-app.post('https://airtable-test.onrender.com/api/teams-response/:action', async (req, res) => {
+app.post('/api/teams-response/:action', async (req, res) => {
     try {
+        console.log('Teams response received:', {
+            action: req.params.action,
+            body: req.body,
+            headers: req.headers
+        });
+
         const { action } = req.params;
         const { intakeId, summary, modifiedText } = req.body;
+        
+        // Initialize Airtable if not already initialized
+        if (!airtableBase) {
+            airtableBase = initializeAirtable();
+        }
         
         // Get the request record first
         const records = await airtableBase('Submitted Requests')
@@ -333,61 +353,70 @@ app.post('https://airtable-test.onrender.com/api/teams-response/:action', async 
         }
 
         const request = records[0];
+        let statusMessage = '';
 
         // Handle different actions
         switch(action) {
             case 'approve':
-                // For approve, just update the summary
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': summary,
                     'Status Summary Status': 'Approved'
                 });
-                console.log('Approved summary:', summary);
+                statusMessage = 'Approved summary';
                 break;
 
             case 'reject':
-                // For reject, mark as rejected without updating summary
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary Status': 'Rejected'
                 });
-                console.log('Rejected summary');
+                statusMessage = 'Rejected summary';
                 break;
 
             case 'modify':
-                // For modify, update with the modified text
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': modifiedText,
                     'Status Summary Status': 'Approved'
                 });
-                console.log('Modified and approved summary:', modifiedText);
+                statusMessage = 'Modified and approved summary';
                 break;
 
             default:
                 throw new Error(`Invalid action: ${action}`);
         }
 
+        console.log(statusMessage, { intakeId, action });
+
         // Send confirmation message back to Teams
         const confirmationMessage = {
             type: "message",
             text: `Status summary ${action}ed for Intake ID: ${intakeId}`
         };
-        await axios.post(config.logicApp.url, confirmationMessage);
+        
+        if (config.logicApp.url) {
+            await axios.post(config.logicApp.url, confirmationMessage);
+        }
 
         res.json({ 
             success: true, 
-            message: `Successfully ${action}ed status summary`,
-            intakeId
+            message: statusMessage,
+            intakeId,
+            action
         });
     } catch (error) {
-        console.error('Error processing Teams response:', error);
+        console.error('Error processing Teams response:', {
+            error: error.message,
+            stack: error.stack,
+            action: req.params.action,
+            intakeId: req.body?.intakeId
+        });
+        
         res.status(500).json({ 
             error: error.message,
             action: req.params.action,
-            intakeId: req.body.intakeId 
+            intakeId: req.body?.intakeId 
         });
     }
 });
-
 app.get('/', (req, res) => {
     console.log('Root route accessed');
     res.json({
@@ -407,82 +436,6 @@ app.get('/test', (req, res) => {
 });
 
 // Your existing routes...
-app.post('/api/teams-response/:action', async (req, res) => {
-    console.log('Teams response received:', {
-        action: req.params.action,
-        body: req.body
-    });
-    try {
-        const { action } = req.params;
-        const { intakeId, summary, modifiedText } = req.body;
-        
-        // Get the request record first
-        const records = await airtableBase('Submitted Requests')
-            .select({
-                filterByFormula: `{Intake ID} = '${intakeId}'`
-            })
-            .firstPage();
-
-        if (!records || records.length === 0) {
-            throw new Error(`No record found for Intake ID: ${intakeId}`);
-        }
-
-        const request = records[0];
-
-        // Handle different actions
-        switch(action) {
-            case 'approve':
-                // For approve, just update the summary
-                await airtableBase('Submitted Requests').update(request.id, {
-                    'Status Summary': summary,
-                    'Status Summary Status': 'Approved'
-                });
-                console.log('Approved summary:', summary);
-                break;
-
-            case 'reject':
-                // For reject, mark as rejected without updating summary
-                await airtableBase('Submitted Requests').update(request.id, {
-                    'Status Summary Status': 'Rejected'
-                });
-                console.log('Rejected summary');
-                break;
-
-            case 'modify':
-                // For modify, update with the modified text
-                await airtableBase('Submitted Requests').update(request.id, {
-                    'Status Summary': modifiedText,
-                    'Status Summary Status': 'Approved'
-                });
-                console.log('Modified and approved summary:', modifiedText);
-                break;
-
-            default:
-                throw new Error(`Invalid action: ${action}`);
-        }
-
-        // Send confirmation message back to Teams
-        const confirmationMessage = {
-            type: "message",
-            text: `Status summary ${action}ed for Intake ID: ${intakeId}`
-        };
-        await axios.post(config.logicApp.url, confirmationMessage);
-
-        res.json({ 
-            success: true, 
-            message: `Successfully ${action}ed status summary`,
-            intakeId
-        });
-    } catch (error) {
-        console.error('Error processing Teams response:', error);
-        res.status(500).json({ 
-            error: error.message,
-            action: req.params.action,
-            intakeId: req.body.intakeId 
-        });
-    }
- 
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
