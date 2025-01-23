@@ -360,14 +360,14 @@ app.post('/api/teams-response/:action', async (req, res) => {
             case 'approve':
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': summary,
-                    'Status Summary Status': 'Approved'
+               //     'Status Summary Status': 'Approved'
                 });
                 statusMessage = 'Approved summary';
                 break;
 
             case 'reject':
                 await airtableBase('Submitted Requests').update(request.id, {
-                    'Status Summary Status': 'Rejected'
+                    'Status Summary': 'Rejected'
                 });
                 statusMessage = 'Rejected summary';
                 break;
@@ -375,7 +375,7 @@ app.post('/api/teams-response/:action', async (req, res) => {
             case 'modify':
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': modifiedText,
-                    'Status Summary Status': 'Approved'
+                 //   'Status Summary Status': 'Approved'
                 });
                 statusMessage = 'Modified and approved summary';
                 break;
