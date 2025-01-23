@@ -36,7 +36,6 @@ function initializeAirtable() {
 // Modified sendTeamsMessage function to work with Logic App
 // Modify the existing sendTeamsMessage function to include action handlers
 async function sendTeamsMessage(summary, intakeId) {
-    // Structure the message for Logic App with updated action handlers
     const message = {
         type: "message",
         attachments: [{
@@ -60,19 +59,6 @@ async function sendTeamsMessage(summary, intakeId) {
                         type: "TextBlock",
                         text: summary,
                         wrap: true
-                    },
-                    {
-                        type: "FactSet",
-                        facts: [
-                            {
-                                title: "Status",
-                                value: "Pending Review"
-                            },
-                            {
-                                title: "Generated On",
-                                value: new Date().toLocaleDateString()
-                            }
-                        ]
                     }
                 ],
                 actions: [
@@ -80,11 +66,9 @@ async function sendTeamsMessage(summary, intakeId) {
                         type: "Action.Submit",
                         title: "Approve",
                         data: {
-                            msteams: {
-                                type: "messageBack",
-                                text: "approved"
-                            },
-                            actionId: "approve",
+                            id: "approve",
+                            verb: "approve",
+                            targetUrl: `${process.env.SERVER_URL}/api/teams-response/approve`,
                             intakeId: intakeId,
                             summary: summary
                         }
@@ -93,11 +77,9 @@ async function sendTeamsMessage(summary, intakeId) {
                         type: "Action.Submit",
                         title: "Reject",
                         data: {
-                            msteams: {
-                                type: "messageBack",
-                                text: "rejected"
-                            },
-                            actionId: "reject",
+                            id: "reject",
+                            verb: "reject",
+                            targetUrl: `${process.env.SERVER_URL}/api/teams-response/reject`,
                             intakeId: intakeId
                         }
                     },
@@ -120,11 +102,9 @@ async function sendTeamsMessage(summary, intakeId) {
                                     type: "Action.Submit",
                                     title: "Submit Modified",
                                     data: {
-                                        msteams: {
-                                            type: "messageBack",
-                                            text: "modified"
-                                        },
-                                        actionId: "modify",
+                                        id: "modify",
+                                        verb: "modify",
+                                        targetUrl: `${process.env.SERVER_URL}/api/teams-response/modify`,
                                         intakeId: intakeId
                                     }
                                 }
@@ -314,15 +294,42 @@ async function processIntake(intakeId) {
 }
 
 // API Server Setup
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        env: {
+            hasAirtableKey: !!config.airtable.apiKey,
+            hasAirtableBase: !!config.airtable.baseId,
+            hasLogicAppUrl: !!config.logicApp.url,
+            serverUrl: process.env.SERVER_URL
+        }
+    });
+});
+
+app.post('/api/test-teams-action', (req, res) => {
+    console.log('Test Teams action received:', {
+        body: req.body,
+        headers: req.headers
+    });
+    res.json({
+        received: true,
+        body: req.body
+    });
+});
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 app.use(cors({
-    origin: '*',  // Be more specific in production
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    origin: '*',  // In production, specify actual allowed origins
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+    maxAge: 86400 // 24 hours
 }));
+
 app.use((req, res, next) => {
     console.log('Incoming request:', {
         method: req.method,
