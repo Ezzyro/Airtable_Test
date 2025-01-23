@@ -338,7 +338,7 @@ app.post('/api/teams-response/:action', async (req, res) => {
         
         // Initialize Airtable if not already initialized
         if (!airtableBase) {
-            airtableBase = initializeAirtable();
+            airtableBase = initializeServices();
         }
         
         // Get the request record first
