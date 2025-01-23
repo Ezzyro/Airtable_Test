@@ -344,8 +344,7 @@ app.post('/api/teams-response/:action', async (req, res) => {
         // Get the request record first
         const records = await airtableBase('Submitted Requests')
             .select({
-                filterByFormula: `{Intake ID} = '${intakeId}'`,
-                fields: ['Intake ID', 'Status Summary', 'Status Summary Status'] // Specify the fields we need
+                filterByFormula: `{Intake ID} = '${intakeId}'`
             })
             .firstPage();
 
@@ -354,13 +353,8 @@ app.post('/api/teams-response/:action', async (req, res) => {
         }
 
         const record = records[0];
-        console.log('Found record:', {
-            recordId: record.id,
-            intakeId,
-            currentStatus: record.fields['Status Summary Status']
-        });
-
         let updateFields = {};
+        let statusMessage = '';
 
         // Handle different actions
         switch(action) {
@@ -369,12 +363,14 @@ app.post('/api/teams-response/:action', async (req, res) => {
                     'Status Summary': summary,
                     'Status Summary Status': 'Approved'
                 };
+                statusMessage = 'Summary approved';
                 break;
 
             case 'reject':
                 updateFields = {
                     'Status Summary Status': 'Rejected'
                 };
+                statusMessage = 'Summary rejected';
                 break;
 
             case 'modify':
@@ -382,25 +378,27 @@ app.post('/api/teams-response/:action', async (req, res) => {
                     'Status Summary': modifiedText || summary,
                     'Status Summary Status': 'Approved'
                 };
+                statusMessage = 'Summary modified and approved';
                 break;
 
             default:
                 throw new Error(`Invalid action: ${action}`);
         }
 
-        // Log the update attempt
-        console.log('Attempting to update record:', {
+        // Perform the update
+        console.log('Updating Airtable record:', {
             recordId: record.id,
             fields: updateFields
         });
 
-        // Update the record
-        const updatedRecord = await airtableBase('Submitted Requests').update(record.id, updateFields);
-        
-        console.log('Record updated successfully:', {
-            recordId: updatedRecord.id,
-            newStatus: updatedRecord.fields['Status Summary Status']
-        });
+        await airtableBase('Submitted Requests').update([
+            {
+                id: record.id,
+                fields: updateFields
+            }
+        ]);
+
+        console.log(`${statusMessage} for Intake ID: ${intakeId}`);
 
         // Send confirmation message back to Teams
         const confirmationMessage = {
@@ -414,10 +412,10 @@ app.post('/api/teams-response/:action', async (req, res) => {
 
         res.json({ 
             success: true, 
-            message: `Successfully ${action}ed status summary`,
+            message: statusMessage,
             intakeId,
             action,
-            newStatus: updatedRecord.fields['Status Summary Status']
+            updatedFields: updateFields
         });
     } catch (error) {
         console.error('Error processing Teams response:', {
@@ -434,6 +432,7 @@ app.post('/api/teams-response/:action', async (req, res) => {
         });
     }
 });
+
 app.get('/', (req, res) => {
     console.log('Root route accessed');
     res.json({
