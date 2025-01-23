@@ -388,18 +388,38 @@ app.post('https://airtable-test.onrender.com/api/teams-response/:action', async 
     }
 });
 
-app.use((err, req, res, next) => {
-    console.error('Error:', {
-        message: err.message,
-        stack: err.stack,
-        url: req.url,
-        method: req.method,
+app.get('/', (req, res) => {
+    console.log('Root route accessed');
+    res.json({
+        status: 'ok',
+        message: 'Server is running'
+    });
+});
+
+app.get('/test', (req, res) => {
+    console.log('Test route accessed');
+    res.json({
+        status: 'running',
+        message: 'Server is up and running!',
+        timestamp: new Date().toISOString(),
+        serverUrl: process.env.SERVER_URL
+    });
+});
+
+// Your existing routes...
+app.post('/api/teams-response/:action', async (req, res) => {
+    console.log('Teams response received:', {
+        action: req.params.action,
         body: req.body
     });
-    
+    // ... rest of your Teams response handler
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error occurred:', err);
     res.status(500).json({
         error: err.message,
-        requestUrl: req.url,
         timestamp: new Date().toISOString()
     });
 });
