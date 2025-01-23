@@ -32,8 +32,9 @@ function initializeAirtable() {
 
 // Teams message handling
 // Modified sendTeamsMessage function to work with Logic App
+// Modify the existing sendTeamsMessage function to include action handlers
 async function sendTeamsMessage(summary, intakeId) {
-    // Structure the message for Logic App
+    // Structure the message for Logic App with updated action handlers
     const message = {
         type: "message",
         attachments: [{
@@ -79,7 +80,8 @@ async function sendTeamsMessage(summary, intakeId) {
                         data: {
                             actionId: "approve",
                             intakeId: intakeId,
-                            summary: summary
+                            summary: summary,
+                            webhookUrl: `${process.env.SERVER_URL}/api/teams-response/approve`
                         }
                     },
                     {
@@ -87,7 +89,8 @@ async function sendTeamsMessage(summary, intakeId) {
                         title: "Reject",
                         data: {
                             actionId: "reject",
-                            intakeId: intakeId
+                            intakeId: intakeId,
+                            webhookUrl: `${process.env.SERVER_URL}/api/teams-response/reject`
                         }
                     },
                     {
@@ -110,7 +113,8 @@ async function sendTeamsMessage(summary, intakeId) {
                                     title: "Submit Modified",
                                     data: {
                                         actionId: "modify",
-                                        intakeId: intakeId
+                                        intakeId: intakeId,
+                                        webhookUrl: `${process.env.SERVER_URL}/api/teams-response/modify`
                                     }
                                 }
                             ]
@@ -122,24 +126,12 @@ async function sendTeamsMessage(summary, intakeId) {
     };
 
     try {
-        // Log the outgoing message for debugging
         console.log('Sending message to Logic App:', JSON.stringify(message, null, 2));
-        
-        // Send to Logic App
         const response = await axios.post(config.logicApp.url, message);
-        
-        // Log the response for debugging
         console.log('Logic App Response:', response.status, response.statusText);
-        console.log('Response Data:', JSON.stringify(response.data, null, 2));
-        
         return true;
     } catch (error) {
-        console.error('Error sending message:', {
-            status: error.response?.status,
-            statusText: error.response?.statusText,
-            data: error.response?.data,
-            error: error.message
-        });
+        console.error('Error sending message:', error);
         return false;
     }
 }
@@ -320,24 +312,70 @@ app.post('/api/teams-response/:action', async (req, res) => {
         const { action } = req.params;
         const { intakeId, summary, modifiedText } = req.body;
         
-        switch(action) {
-            case 'approve':
-                await updateAirtableStatus(intakeId, summary, 'Approved');
-                break;
-            case 'modify':
-                await updateAirtableStatus(intakeId, modifiedText, 'Approved');
-                break;
-            case 'reject':
-                await updateAirtableStatus(intakeId, null, 'Rejected');
-                break;
-            default:
-                throw new Error('Invalid action');
+        // Get the request record first
+        const records = await airtableBase('Submitted Requests')
+            .select({
+                filterByFormula: `{Intake ID} = '${intakeId}'`
+            })
+            .firstPage();
+
+        if (!records || records.length === 0) {
+            throw new Error(`No record found for Intake ID: ${intakeId}`);
         }
 
-        res.json({ success: true });
+        const request = records[0];
+
+        // Handle different actions
+        switch(action) {
+            case 'approve':
+                // For approve, just update the summary
+                await airtableBase('Submitted Requests').update(request.id, {
+                    'Status Summary': summary,
+                    'Status Summary Status': 'Approved'
+                });
+                console.log('Approved summary:', summary);
+                break;
+
+            case 'reject':
+                // For reject, mark as rejected without updating summary
+                await airtableBase('Submitted Requests').update(request.id, {
+                    'Status Summary Status': 'Rejected'
+                });
+                console.log('Rejected summary');
+                break;
+
+            case 'modify':
+                // For modify, update with the modified text
+                await airtableBase('Submitted Requests').update(request.id, {
+                    'Status Summary': modifiedText,
+                    'Status Summary Status': 'Approved'
+                });
+                console.log('Modified and approved summary:', modifiedText);
+                break;
+
+            default:
+                throw new Error(`Invalid action: ${action}`);
+        }
+
+        // Send confirmation message back to Teams
+        const confirmationMessage = {
+            type: "message",
+            text: `Status summary ${action}ed for Intake ID: ${intakeId}`
+        };
+        await axios.post(config.logicApp.url, confirmationMessage);
+
+        res.json({ 
+            success: true, 
+            message: `Successfully ${action}ed status summary`,
+            intakeId
+        });
     } catch (error) {
-        console.error('API Error:', error);
-        res.status(500).json({ error: error.message });
+        console.error('Error processing Teams response:', error);
+        res.status(500).json({ 
+            error: error.message,
+            action: req.params.action,
+            intakeId: req.body.intakeId 
+        });
     }
 });
 
@@ -378,15 +416,33 @@ function formatNotes(notes) {
 
 async function updateAirtableStatus(intakeId, summary, status) {
     try {
+        console.log('Updating Airtable:', {
+            intakeId,
+            status,
+            summaryLength: summary?.length
+        });
+
+        const records = await airtableBase('Submitted Requests')
+            .select({
+                filterByFormula: `{Intake ID} = '${intakeId}'`
+            })
+            .firstPage();
+
+        if (!records || records.length === 0) {
+            throw new Error(`No record found for Intake ID: ${intakeId}`);
+        }
+
+        const recordId = records[0].id;
         const updateFields = {
             'Status Summary Status': status
         };
         
-        if (summary) {
+        if (summary !== null) {
             updateFields['Status Summary'] = summary;
         }
 
-        await airtableBase('Submitted Requests').update(intakeId, updateFields);
+        await airtableBase('Submitted Requests').update(recordId, updateFields);
+        console.log('Successfully updated Airtable status');
         return true;
     } catch (error) {
         console.error('Error updating Airtable:', error);
