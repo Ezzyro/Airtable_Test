@@ -86,7 +86,8 @@ async function sendTeamsMessage(summary, intakeId) {
                             },
                             actionId: "approve",
                             intakeId: intakeId,
-                            summary: summary
+                            summary: summary,
+                            url: `${process.env.LOGIC_APP_URL}/api/teams-response/approve`  // Using template literal
                         }
                     },
                     {
@@ -98,7 +99,8 @@ async function sendTeamsMessage(summary, intakeId) {
                                 text: "rejected"
                             },
                             actionId: "reject",
-                            intakeId: intakeId
+                            intakeId: intakeId,
+                            url: `${process.env.LOGIC_APP_URL}/api/teams-response/reject`
                         }
                     },
                     {
@@ -125,7 +127,8 @@ async function sendTeamsMessage(summary, intakeId) {
                                             text: "modified"
                                         },
                                         actionId: "modify",
-                                        intakeId: intakeId
+                                        intakeId: intakeId,
+                                        url: `${process.env.LOGIC_APP_URL}/api/teams-response/modify`
                                     }
                                 }
                             ]
