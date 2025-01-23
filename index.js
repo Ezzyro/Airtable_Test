@@ -31,7 +31,6 @@ function initializeAirtable() {
     }
     return new Airtable({ apiKey: config.airtable.apiKey }).base(config.airtable.baseId);
 }
-
 // Teams message handling
 // Modified sendTeamsMessage function to work with Logic App
 // Modify the existing sendTeamsMessage function to include action handlers
@@ -330,21 +329,13 @@ app.use(cors({
 // API Endpoints
 app.post('/api/teams-response/:action', async (req, res) => {
     try {
-        console.log('Teams response received:', {
-            action: req.params.action,
-            body: req.body,
-            headers: req.headers
-        });
-
         const { action } = req.params;
         const { intakeId, summary, modifiedText } = req.body;
         
-        // Initialize Airtable if not already initialized
-        if (!airtableBase) {
-            airtableBase = initializeServices();
-        }
-        console.log(intakeId,summary,modifiedText);
-        // Get the request record first
+        // Initialize Airtable for each request
+        const airtableBase = initializeAirtable();
+        
+        // Get the request record
         const records = await airtableBase('Submitted Requests')
             .select({
                 filterByFormula: `{Intake ID} = '${intakeId}'`
@@ -356,55 +347,42 @@ app.post('/api/teams-response/:action', async (req, res) => {
         }
 
         const request = records[0];
-        let statusMessage = '';
-
-        // Handle different actions
+        
+        // Handle different actions with proper status updates
         switch(action) {
             case 'approve':
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': summary,
-               //     'Status Summary Status': 'Approved'
+                    'Status Summary Status': 'Approved'  // Uncommented
                 });
-                statusMessage = 'Approved summary';
                 break;
 
             case 'reject':
                 await airtableBase('Submitted Requests').update(request.id, {
-                    'Status Summary': 'Rejected'
+                    'Status Summary': 'Rejected',
+                    'Status Summary Status': 'Rejected'  // Added status
                 });
-                statusMessage = 'Rejected summary';
                 break;
 
             case 'modify':
                 await airtableBase('Submitted Requests').update(request.id, {
                     'Status Summary': modifiedText,
-                 //   'Status Summary Status': 'Approved'
+                    'Status Summary Status': 'Approved'  // Uncommented
                 });
-                statusMessage = 'Modified and approved summary';
                 break;
 
             default:
                 throw new Error(`Invalid action: ${action}`);
         }
 
-        console.log(statusMessage, { intakeId, action });
-
-        // Send confirmation message back to Teams
-        const confirmationMessage = {
-            type: "message",
-            text: `Status summary ${action}ed for Intake ID: ${intakeId}`
-        };
-        
-        if (config.logicApp.url) {
-            await axios.post(config.logicApp.url, confirmationMessage);
-        }
-
+        // Send confirmation response
         res.json({ 
             success: true, 
-            message: statusMessage,
+            message: `Status summary ${action}ed for Intake ID: ${intakeId}`,
             intakeId,
             action
         });
+
     } catch (error) {
         console.error('Error processing Teams response:', {
             error: error.message,
