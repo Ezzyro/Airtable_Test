@@ -294,6 +294,9 @@ async function processIntake(intakeId) {
 }
 
 // API Server Setup
+const app = express();
+app.use(express.json());
+app.use(cors());
 
 app.get('/health', (req, res) => {
     res.json({
@@ -318,9 +321,6 @@ app.post('/api/test-teams-action', (req, res) => {
         body: req.body
     });
 });
-const app = express();
-app.use(express.json());
-app.use(cors());
 
 app.use(cors({
     origin: '*',  // In production, specify actual allowed origins
