@@ -323,7 +323,15 @@ app.use(cors({
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
+app.use((req, res, next) => {
+    console.log('Incoming request:', {
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        query: req.query
+    });
+    next();
+});
 // API Endpoints
 app.post('/api/teams-response/:action', async (req, res) => {
     try {
