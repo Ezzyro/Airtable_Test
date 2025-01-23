@@ -340,7 +340,7 @@ app.post('/api/teams-response/:action', async (req, res) => {
         if (!airtableBase) {
             airtableBase = initializeServices();
         }
-        
+        console.log(intakeId,summary,modifiedText);
         // Get the request record first
         const records = await airtableBase('Submitted Requests')
             .select({
