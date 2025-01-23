@@ -341,12 +341,17 @@ app.post('/api/teams-response/:action', async (req, res) => {
             airtableBase = initializeAirtable();
         }
         
-        // Get the request record first
-        const records = await airtableBase('Submitted Requests')
-            .select({
-                filterByFormula: `{Intake ID} = '${intakeId}'`
-            })
-            .firstPage();
+        // Get the request record using the working approach with Promise
+        const records = await new Promise((resolve, reject) => {
+            airtableBase('Submitted Requests')
+                .select({
+                    filterByFormula: `{Intake ID} = '${intakeId}'`
+                })
+                .firstPage((err, records) => {
+                    if (err) reject(err);
+                    else resolve(records);
+                });
+        });
 
         if (!records || records.length === 0) {
             throw new Error(`No record found for Intake ID: ${intakeId}`);
@@ -385,28 +390,26 @@ app.post('/api/teams-response/:action', async (req, res) => {
                 throw new Error(`Invalid action: ${action}`);
         }
 
-        // Perform the update
-        console.log('Updating Airtable record:', {
-            recordId: record.id,
-            fields: updateFields
+        // Use the working update approach
+        await new Promise((resolve, reject) => {
+            airtableBase('Submitted Requests').update(record.id, updateFields, (err, updatedRecord) => {
+                if (err) {
+                    console.error('Airtable update error:', err);
+                    reject(err);
+                } else {
+                    resolve(updatedRecord);
+                }
+            });
         });
-
-        await airtableBase('Submitted Requests').update([
-            {
-                id: record.id,
-                fields: updateFields
-            }
-        ]);
 
         console.log(`${statusMessage} for Intake ID: ${intakeId}`);
 
         // Send confirmation message back to Teams
-        const confirmationMessage = {
-            type: "message",
-            text: `Status summary ${action}ed for Intake ID: ${intakeId}`
-        };
-        
         if (config.logicApp.url) {
+            const confirmationMessage = {
+                type: "message",
+                text: `Status summary ${action}ed for Intake ID: ${intakeId}`
+            };
             await axios.post(config.logicApp.url, confirmationMessage);
         }
 
@@ -432,26 +435,6 @@ app.post('/api/teams-response/:action', async (req, res) => {
         });
     }
 });
-
-app.get('/', (req, res) => {
-    console.log('Root route accessed');
-    res.json({
-        status: 'ok',
-        message: 'Server is running'
-    });
-});
-
-app.get('/test', (req, res) => {
-    console.log('Test route accessed');
-    res.json({
-        status: 'running',
-        message: 'Server is up and running!',
-        timestamp: new Date().toISOString(),
-        serverUrl: process.env.SERVER_URL
-    });
-});
-
-// Your existing routes...
 
 // Error handling middleware
 app.use((err, req, res, next) => {
